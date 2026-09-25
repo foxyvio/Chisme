@@ -1,18 +1,17 @@
-# Chisme backend
+# Chisme production-oriented backend
 
-Privacy-first backend for Chisme, an alternative to Telegram. The server is deliberately **zero-knowledge for message content**: clients encrypt plaintext before calling the API. The API stores and relays ciphertext, nonces, and public key material only.
+Chisme now has a scalable backend foundation for a privacy-first Telegram alternative.
 
-## Included foundation
+## What was added
 
-- Password authentication with Argon2-ready password boundary (bcrypt currently used for portability)
-- Multi-device identity keys, signed pre-keys, and one-time pre-key bundles
-- Direct chats, groups, and channels with membership roles
-- Encrypted message storage, pagination, client idempotency, replies, expiry metadata, edit/delete-ready schema
-- WebSocket realtime delivery
-- PostgreSQL schema with indexes and cascading membership cleanup
-- Helmet, CORS, rate limiting, validation, and graceful shutdown
+- **E2EE by default:** the API accepts ciphertext only; use an audited Signal Double Ratchet/Sesame implementation or MLS in clients.
+- **Subscription entitlements:** Free and Plus plans, database-backed subscriptions, configurable device, storage, bot, file, and group limits.
+- **Large encrypted files:** S3-compatible multipart uploads with presigned part URLs. The server never buffers files. Plus supports files up to 20 GB and groups up to 1,000,000 members.
+- **Bots:** bot creation, hashed bot tokens, webhook URL, permissions, lifecycle status, and plan limits. Plus is configured for up to 1,000,000 bots per account, subject to abuse controls and infrastructure capacity.
+- **Large groups:** membership schema and API validation support 1 lakh/10 lakh-scale groups; production deployments must shard fan-out and membership operations.
+- **Realtime:** WebSocket delivery remains available for encrypted events.
 
-## Quick start
+## Run
 
 ```bash
 docker compose up -d
@@ -23,26 +22,24 @@ npm run db:migrate
 npm run dev
 ```
 
-API starts at `http://localhost:3000`. Health: `GET /health`.
+## Object storage setup
 
-## E2EE contract
+Create the bucket in S3, MinIO, Cloudflare R2, or another S3-compatible provider and configure the `S3_*` variables. Uploads use 64 MiB multipart parts and signed URLs; 20 GB requires at least 320 parts. Clients must encrypt the file before uploading and send only encrypted bytes. Store the file key in an E2EE message, never in this API.
 
-Use a proven audited protocol in clients (for example, Signal's Double Ratchet / Sesame design or MLS for groups). Do **not** implement cryptography in this server and do not send plaintext to it. The device endpoints publish public identity keys and pre-key material; `/v1/messages` accepts only ciphertext. Attachments should use client-side envelope encryption, with object storage receiving encrypted bytes and the API storing only opaque metadata.
+## Subscription payments
 
-## Roadmap for Telegram-class features
+`POST /v1/subscriptions/activate` is an entitlement-development endpoint, not a payment processor. For production, replace it with Stripe/Razorpay/etc. webhooks, verify signatures, make webhook handling idempotent, and allow only the provider to change paid subscription state.
 
-1. Production E2EE clients: key verification/safety numbers, key rotation, disappearing messages, encrypted attachments, encrypted push payloads, and encrypted group sessions.
-2. Durable delivery: offline queue, per-device delivery/read receipts, retry/ack protocol, and push notifications with no message content.
-3. Communities: invite links, moderation/audit events, polls, scheduled messages, pinned messages, topics, and broadcast channels.
-4. Calls: WebRTC SFU with end-to-end media encryption, voice rooms, screen sharing, and call signaling over the realtime service.
-5. Platform: encrypted object storage, search over local client indexes, bot sandbox with explicit user consent, abuse controls, observability, backups, and independent security audits.
+## Production requirements before launch
 
-Telegram's cloud chats are not end-to-end encrypted by default; Chisme's key product decision is the opposite: E2EE by default, with server features designed around that constraint.
+This code is a strong backend foundation, not a claim that an internet-facing messaging service is automatically production-ready. Before serving real users, add:
 
-## Security notes before production
+- Redis/NATS pub-sub, queue workers, connection limits, and horizontal WebSocket scaling
+- Sharded membership/fan-out, delivery/read receipts, offline queues, push notifications without plaintext, and backpressure
+- Argon2id, refresh-token rotation, 2FA/passkeys, verification/recovery, account lockout, and device revocation
+- Signed upload completion verification, malware scanning of encrypted metadata where possible, quota workers, orphan multipart cleanup, CDN downloads, and resumable retries
+- Payment-provider webhooks, tax/invoice handling, refunds, and entitlement audit logs
+- Bot rate limits, sandboxing, webhook retries/signatures, abuse prevention, moderation/reporting flows compatible with E2EE
+- MLS/Signal client integration, key transparency, encrypted attachment key distribution, secure backups, threat modeling, load tests, dependency scanning, and an external security audit
 
-- Replace bcrypt with Argon2id and add email/phone verification, recovery, 2FA, refresh-token rotation, and account lockout.
-- Add CSRF protection if browser cookies are introduced; prefer short-lived access tokens and secure refresh tokens.
-- Put WebSockets behind authentication middleware, a connection limit, and a pub/sub adapter (Redis/NATS) for multiple API instances.
-- Never log request bodies, ciphertext, tokens, private keys, or push payloads.
-- Add abuse prevention, content-reporting flows that respect E2EE limitations, key transparency, dependency scanning, threat modeling, and an external audit.
+Never log plaintext, private keys, access tokens, request bodies, or message ciphertext.
