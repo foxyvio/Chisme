@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  CHANNEL
+}
+
+enum MemberRole {
+  MEMBER
+  MODERATOR
+  ADMIN
+  OWNER
+}
+
+model User {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  displayName String
+  passwordHash String
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  devices     Device[]
+  memberships Membership[]
+  messages    Message[]
+}
+
+model Device {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  identityKey    String
+  signedPreKey   String
+  signedPreKeySig String
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  preKeys        PreKey[]
+  @@index([userId])
+}
+
+model PreKey {
+  id       String  @id @default(cuid())
+  deviceId String
+  device   Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  key      String
+  usedAt   DateTime?
+  @@index([deviceId, usedAt])
+}
+
+model Conversation {
+  id          String           @id @default(cuid())
+  type        ConversationType
+  title       String?
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  memberships Membership[]
+  messages    Message[]
+  @@index([updatedAt])
+}
+
+model Membership {
+  conversationId String
+  userId         String
+  role           MemberRole @default(MEMBER)
+  joinedAt       DateTime   @default(now())
+  mutedUntil     DateTime?
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  senderDeviceId String
+  clientMessageId String
+  ciphertext     String
+  nonce          String
+  algorithm      String   @default("xchacha20-poly1305")
+  replyToId      String?
+  expiresAt      DateTime?
+  createdAt      DateTime @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  @@unique([senderDeviceId, clientMessageId])
+  @@index([conversationId, createdAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([userId])
+}

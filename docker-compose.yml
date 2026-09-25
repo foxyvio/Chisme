@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chisme
+      POSTGRES_PASSWORD: chisme
+      POSTGRES_DB: chisme
+    ports:
+      - "5432:5432"
+    volumes:
+      - chisme-postgres:/var/lib/postgresql/data
+volumes:
+  chisme-postgres:
